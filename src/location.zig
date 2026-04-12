@@ -28,3 +28,19 @@ pub const LocationError = error{
     GeocodingFailed,
     PlatformUnsupported,
 };
+
+// ---------------------------------------------------------------------------
+// Dispatcher functions — delegate to the platform implementation
+// ---------------------------------------------------------------------------
+
+pub fn getLocation(allocator: Allocator, timeout_ms: u32) !Location {
+    return platform.getLocation(allocator, timeout_ms);
+}
+
+pub fn reverseGeocode(allocator: Allocator, lat: f64, lon: f64) !?Address {
+    return platform.reverseGeocode(allocator, lat, lon);
+}
+
+pub fn freeAddress(allocator: Allocator, address: Address) void {
+    platform.freeAddress(allocator, address);
+}
