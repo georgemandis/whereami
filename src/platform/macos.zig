@@ -9,6 +9,28 @@ extern "c" fn CFRunLoopStop(rl: *anyopaque) void;
 extern "c" fn CFRunLoopRunInMode(mode: objc.id, seconds: f64, returnAfterSourceHandled: bool) i32;
 extern "c" var kCFRunLoopDefaultMode: objc.id;
 
+// ObjC block ABI layout for constructing blocks from Zig.
+// See: https://clang.llvm.org/docs/Block-ABI-Apple.html
+extern var _NSConcreteStackBlock: [1]usize; // sized extern; we only need its address
+
+const BlockDescriptor = extern struct {
+    reserved: c_ulong,
+    size: c_ulong,
+};
+
+const GeocoderBlockLiteral = extern struct {
+    isa: *anyopaque,
+    flags: c_int,
+    reserved: c_int,
+    invoke: *const fn (*GeocoderBlockLiteral, ?objc.id, ?objc.id) callconv(.c) void,
+    descriptor: *const BlockDescriptor,
+};
+
+const geocoder_block_descriptor = BlockDescriptor{
+    .reserved = 0,
+    .size = @sizeOf(GeocoderBlockLiteral),
+};
+
 // ---------------------------------------------------------------------------
 // Module-level state shared between delegate callbacks and getLocation
 // ---------------------------------------------------------------------------
@@ -17,6 +39,13 @@ var result_location: ?Location = null;
 var result_error: ?LocationError = null;
 var completed: bool = false;
 var current_run_loop: ?*anyopaque = null;
+
+// ---------------------------------------------------------------------------
+// Module-level state for geocoder block callback
+// ---------------------------------------------------------------------------
+var geocode_result_address: ?@import("../location.zig").Address = null;
+var geocode_result_error: ?LocationError = null;
+var geocode_completed: bool = false;
 
 // ---------------------------------------------------------------------------
 // CLLocationManagerDelegate callback implementations
@@ -189,17 +218,103 @@ pub fn getLocation(allocator: std.mem.Allocator, timeout_ms: u32) !Location {
 }
 
 // ---------------------------------------------------------------------------
-// Stubs for Task 4
+// CLGeocoder block callback and helpers
+// ---------------------------------------------------------------------------
+
+fn geocoderBlockInvoke(block: *GeocoderBlockLiteral, placemarks: ?objc.id, err: ?objc.id) callconv(.c) void {
+    _ = block;
+
+    if (err != null or placemarks == null) {
+        geocode_result_error = LocationError.GeocodingFailed;
+        geocode_completed = true;
+        if (current_run_loop) |rl| CFRunLoopStop(rl);
+        return;
+    }
+
+    const marks = placemarks.?;
+    const count = objc.nsArrayCount(marks);
+    if (count == 0) {
+        geocode_result_error = LocationError.GeocodingFailed;
+        geocode_completed = true;
+        if (current_run_loop) |rl| CFRunLoopStop(rl);
+        return;
+    }
+
+    const placemark = objc.nsArrayObjectAtIndex(marks, 0);
+
+    const Address = @import("../location.zig").Address;
+    geocode_result_address = Address{
+        .street = extractPlacemarkField(placemark, "thoroughfare") catch &[_]u8{},
+        .city = extractPlacemarkField(placemark, "locality") catch &[_]u8{},
+        .state = extractPlacemarkField(placemark, "administrativeArea") catch &[_]u8{},
+        .postal_code = extractPlacemarkField(placemark, "postalCode") catch &[_]u8{},
+        .country = extractPlacemarkField(placemark, "ISOcountryCode") catch &[_]u8{},
+    };
+    geocode_completed = true;
+    if (current_run_loop) |rl| CFRunLoopStop(rl);
+}
+
+/// Extract a string property from a CLPlacemark. Returns heap-allocated copy.
+/// Uses c_allocator since we're inside an ObjC callback without access to the caller's allocator.
+fn extractPlacemarkField(placemark: objc.id, property: [*:0]const u8) ![]const u8 {
+    const nsstr: ?objc.id = objc.msgSend(?objc.id, placemark, objc.sel(property), .{});
+    const str = nsstr orelse return try std.heap.c_allocator.alloc(u8, 0);
+    const cstr = objc.fromNSString(str) orelse return try std.heap.c_allocator.alloc(u8, 0);
+    const len = std.mem.len(cstr);
+    const copy = try std.heap.c_allocator.alloc(u8, len);
+    @memcpy(copy, cstr[0..len]);
+    return copy;
+}
+
+// ---------------------------------------------------------------------------
+// Reverse geocoding public API
 // ---------------------------------------------------------------------------
 
 pub fn reverseGeocode(allocator: std.mem.Allocator, lat: f64, lon: f64) !?@import("../location.zig").Address {
-    _ = allocator;
-    _ = lat;
-    _ = lon;
-    return null;
+    _ = allocator; // Address fields use c_allocator (see block callback)
+
+    // Reset state
+    geocode_result_address = null;
+    geocode_result_error = null;
+    geocode_completed = false;
+
+    // Create CLLocation from lat/lon
+    const CLLocation = objc.getClass("CLLocation") orelse return null;
+    const cl_loc_alloc = objc.msgSend(objc.id, CLLocation, objc.sel("alloc"), .{});
+    const cl_location = objc.msgSend(objc.id, cl_loc_alloc, objc.sel("initWithLatitude:longitude:"), .{ lat, lon });
+
+    // Create CLGeocoder
+    const CLGeocoder = objc.getClass("CLGeocoder") orelse return null;
+    const geocoder_alloc = objc.msgSend(objc.id, CLGeocoder, objc.sel("alloc"), .{});
+    const geocoder = objc.msgSend(objc.id, geocoder_alloc, objc.sel("init"), .{});
+
+    // Construct the ObjC block on the stack
+    var block = GeocoderBlockLiteral{
+        .isa = @ptrCast(&_NSConcreteStackBlock),
+        .flags = 0,
+        .reserved = 0,
+        .invoke = &geocoderBlockInvoke,
+        .descriptor = &geocoder_block_descriptor,
+    };
+
+    // [geocoder reverseGeocodeLocation:completionHandler:]
+    current_run_loop = CFRunLoopGetCurrent();
+    objc.msgSend(void, geocoder, objc.sel("reverseGeocodeLocation:completionHandler:"), .{ cl_location, @as(objc.id, @ptrCast(&block)) });
+
+    // Pump run loop (5 second timeout for geocoding)
+    _ = CFRunLoopRunInMode(kCFRunLoopDefaultMode, 5.0, false);
+    current_run_loop = null;
+
+    if (geocode_result_error != null) return null;
+    return geocode_result_address;
 }
 
 pub fn freeAddress(allocator: std.mem.Allocator, address: @import("../location.zig").Address) void {
-    _ = allocator;
-    _ = address;
+    _ = allocator; // Fields allocated with c_allocator in block callback
+    const alloc = std.heap.c_allocator;
+    if (address.street.len > 0) alloc.free(@constCast(address.street));
+    if (address.city.len > 0) alloc.free(@constCast(address.city));
+    if (address.state.len > 0) alloc.free(@constCast(address.state));
+    if (address.postal_code.len > 0) alloc.free(@constCast(address.postal_code));
+    if (address.country.len > 0) alloc.free(@constCast(address.country));
 }
