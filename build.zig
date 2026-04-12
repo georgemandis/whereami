@@ -76,13 +76,23 @@ pub fn build(b: *std.Build) void {
         });
         codesign.step.dependOn(&copy_binary.step);
 
-        bundle_step.dependOn(&codesign.step);
+        // Replace zig-out/bin/whereami with a symlink into the bundle,
+        // so running the binary directly picks up the .app's Info.plist
+        // and gets location permissions from macOS.
+        const symlink = b.addSystemCommand(&.{
+            "sh", "-c",
+            \\rm -f zig-out/bin/whereami && \
+            \\ln -s ../whereami.app/Contents/MacOS/whereami zig-out/bin/whereami
+        });
+        symlink.step.dependOn(&codesign.step);
+
+        bundle_step.dependOn(&symlink.step);
 
         // zig build run uses the bundle binary on macOS
         const bundle_run = b.addSystemCommand(&.{
             "zig-out/whereami.app/Contents/MacOS/whereami",
         });
-        bundle_run.step.dependOn(&codesign.step);
+        bundle_run.step.dependOn(&symlink.step);
         if (b.args) |args| {
             for (args) |arg| {
                 bundle_run.addArg(arg);
