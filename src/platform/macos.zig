@@ -90,9 +90,10 @@ fn didFailWithError(_self: objc.id, _sel: objc.SEL, manager: objc.id, err: objc.
     _ = _self;
     _ = _sel;
     _ = manager;
-    _ = err;
 
-    result_error = LocationError.LocationUnavailable;
+    // CLError code 1 = kCLErrorDenied
+    const code = objc.msgSend(isize, err, objc.sel("code"), .{});
+    result_error = if (code == 1) LocationError.PermissionDenied else LocationError.LocationUnavailable;
     completed = true;
     if (current_run_loop) |rl| CFRunLoopStop(rl);
 }
@@ -252,8 +253,8 @@ fn geocoderBlockInvoke(block: *GeocoderBlockLiteral, placemarks: ?objc.id, err: 
 /// Uses c_allocator since we're inside an ObjC callback without access to the caller's allocator.
 fn extractPlacemarkField(placemark: objc.id, property: [*:0]const u8) ![]const u8 {
     const nsstr: ?objc.id = objc.msgSend(?objc.id, placemark, objc.sel(property), .{});
-    const str = nsstr orelse return try std.heap.c_allocator.alloc(u8, 0);
-    const cstr = objc.fromNSString(str) orelse return try std.heap.c_allocator.alloc(u8, 0);
+    const str = nsstr orelse return "";
+    const cstr = objc.fromNSString(str) orelse return "";
     const len = std.mem.len(cstr);
     const copy = try std.heap.c_allocator.alloc(u8, len);
     @memcpy(copy, cstr[0..len]);
