@@ -3,6 +3,12 @@ const objc = @import("../objc.zig");
 const Location = @import("../location.zig").Location;
 const LocationError = @import("../location.zig").LocationError;
 
+// CLLocationCoordinate2D — two f64s, returned in registers on ARM64
+const CLLocationCoordinate2D = extern struct {
+    latitude: f64,
+    longitude: f64,
+};
+
 // CoreFoundation run loop externs
 extern "c" fn CFRunLoopGetCurrent() *anyopaque;
 extern "c" fn CFRunLoopStop(rl: *anyopaque) void;
@@ -62,23 +68,11 @@ fn didUpdateLocations(_self: objc.id, _sel: objc.SEL, manager: objc.id, location
     // Get the last (most recent) CLLocation from the array
     const location = objc.nsArrayObjectAtIndex(locations, count - 1);
 
-    // Use KVC to extract latitude and longitude to avoid struct return issues.
-    // [location valueForKey:@"latitude"] returns NSNumber
-    const lat_key = objc.nsString("latitude");
-    const lon_key = objc.nsString("longitude");
-
-    const lat_num: ?objc.id = objc.msgSend(?objc.id, location, objc.sel("valueForKey:"), .{lat_key});
-    const lon_num: ?objc.id = objc.msgSend(?objc.id, location, objc.sel("valueForKey:"), .{lon_key});
-
-    if (lat_num == null or lon_num == null) {
-        result_error = LocationError.LocationUnavailable;
-        completed = true;
-        if (current_run_loop) |rl| CFRunLoopStop(rl);
-        return;
-    }
-
-    const lat = objc.msgSend(f64, lat_num.?, objc.sel("doubleValue"), .{});
-    const lon = objc.msgSend(f64, lon_num.?, objc.sel("doubleValue"), .{});
+    // On ARM64, CLLocationCoordinate2D (two f64s = 16 bytes) is returned in
+    // registers, so we can call [location coordinate] directly via objc_msgSend.
+    const coord = objc.msgSend(CLLocationCoordinate2D, location, objc.sel("coordinate"), .{});
+    const lat = coord.latitude;
+    const lon = coord.longitude;
 
     // horizontalAccuracy returns f64 directly — no struct return issue
     const accuracy = objc.msgSend(f64, location, objc.sel("horizontalAccuracy"), .{});
