@@ -113,15 +113,15 @@ const ILatLongReport = extern struct {
 // Win32 COM extern functions
 // ---------------------------------------------------------------------------
 
-extern "system" fn CoInitializeEx(reserved: ?*anyopaque, co_init: u32) HRESULT;
-extern "system" fn CoCreateInstance(
+extern "ole32" fn CoInitializeEx(reserved: ?*anyopaque, co_init: u32) callconv(.c) HRESULT;
+extern "ole32" fn CoCreateInstance(
     clsid: *const GUID,
     outer: ?*anyopaque,
     cls_context: u32,
     iid: *const GUID,
     ppv: **anyopaque,
-) HRESULT;
-extern "system" fn CoUninitialize() void;
+) callconv(.c) HRESULT;
+extern "ole32" fn CoUninitialize() callconv(.c) void;
 
 // ---------------------------------------------------------------------------
 // Public API
