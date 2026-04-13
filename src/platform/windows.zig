@@ -205,7 +205,7 @@ pub fn getLocation(allocator: std.mem.Allocator, timeout_ms: u32) !Location {
         }
 
         // Sleep 500ms before retrying
-        std.time.sleep(500 * std.time.ns_per_ms);
+        std.Thread.sleep(500 * std.time.ns_per_ms);
     }
 }
 
