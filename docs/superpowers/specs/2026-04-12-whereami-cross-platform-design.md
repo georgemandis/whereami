@@ -227,15 +227,13 @@ The variant wrapping requires using `dbus_message_iter_open_container` / `dbus_m
 const DBusConnection = opaque {};
 const DBusMessage = opaque {};
 
-// DBusError — must be initialized with dbus_error_init before use
+// DBusError — must be initialized with dbus_error_init before use.
+// The dummy1-5 fields in the C header are bitfields (1 bit each) packed
+// into a single unsigned int.
 const DBusError = extern struct {
     name: ?[*:0]const u8,
     message: ?[*:0]const u8,
-    dummy1: c_uint,
-    dummy2: c_uint,
-    dummy3: c_uint,
-    dummy4: c_uint,
-    dummy5: c_uint,
+    dummy_bits: c_uint, // 5 single-bit fields packed into one uint
     padding1: ?*anyopaque,
 };
 
