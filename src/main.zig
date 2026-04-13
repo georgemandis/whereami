@@ -8,8 +8,9 @@ fn printUsage(writer: *std.io.Writer) !void {
         \\Get your current location using native OS location services.
         \\
         \\Options:
-        \\  --json       Output as JSON
-        \\  --help, -h   Show this help message
+        \\  --json               Output as JSON
+        \\  --mock=LAT,LON       Use provided coordinates instead of location services
+        \\  --help, -h           Show this help message
         \\
     , .{});
 }
@@ -37,7 +38,6 @@ fn printHuman(
     try writer.print("Accuracy: {d:.0}m\n", .{loc.accuracy});
 
     if (addr) |a| {
-        // Build comma-separated address from non-empty fields
         var first = true;
         try writer.print("Address: ", .{});
 
@@ -101,21 +101,44 @@ fn handleError(
 
     switch (err) {
         error.PermissionDenied => stderr_writer.print(
-            "Error: location permission denied\nGrant location access to this app in System Settings > Privacy & Security > Location Services.\n",
+            "Error: location permission denied.\nGrant location access in your system's privacy/location settings.\n",
             .{},
         ) catch {},
         error.LocationUnavailable => stderr_writer.print(
-            "Error: location unavailable\nMake sure location services are enabled and you have a network or GPS signal.\n",
+            "Error: location unavailable.\nMake sure location services are enabled.\n",
             .{},
         ) catch {},
         error.Timeout => stderr_writer.print(
-            "Error: location request timed out\nLocation could not be determined within the allowed time. Try again.\n",
+            "Error: location request timed out.\n",
             .{},
         ) catch {},
         else => stderr_writer.print("Error: unexpected error ({s})\n", .{@errorName(err)}) catch {},
     }
     stderr_writer.flush() catch {};
     std.process.exit(1);
+}
+
+/// Parse "--mock=LAT,LON" and return a Location, or null if not a mock flag.
+/// Returns error for malformed mock values.
+fn parseMockFlag(arg: []const u8) !?location.Location {
+    const prefix = "--mock=";
+    if (!std.mem.startsWith(u8, arg, prefix)) return null;
+
+    const value = arg[prefix.len..];
+    const comma_pos = std.mem.indexOfScalar(u8, value, ',') orelse
+        return error.InvalidMockFormat;
+
+    const lat_str = value[0..comma_pos];
+    const lon_str = value[comma_pos + 1 ..];
+
+    const lat = std.fmt.parseFloat(f64, lat_str) catch return error.InvalidMockFormat;
+    const lon = std.fmt.parseFloat(f64, lon_str) catch return error.InvalidMockFormat;
+
+    return location.Location{
+        .latitude = lat,
+        .longitude = lon,
+        .accuracy = 0,
+    };
 }
 
 pub fn main() !void {
@@ -135,6 +158,7 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     var json_output = false;
+    var mock_location: ?location.Location = null;
 
     for (args[1..]) |arg| {
         if (std.mem.eql(u8, arg, "--json")) {
@@ -143,6 +167,17 @@ pub fn main() !void {
             try printUsage(&stdout.interface);
             try stdout.interface.flush();
             return;
+        } else if (std.mem.startsWith(u8, arg, "--mock")) {
+            if (std.mem.eql(u8, arg, "--mock")) {
+                try stderr.interface.print("Error: --mock requires a value (e.g., --mock=40.7128,-74.0060)\n", .{});
+                try stderr.interface.flush();
+                std.process.exit(2);
+            }
+            mock_location = parseMockFlag(arg) catch {
+                try stderr.interface.print("Error: invalid --mock format, expected --mock=LAT,LON\n", .{});
+                try stderr.interface.flush();
+                std.process.exit(2);
+            };
         } else {
             try stderr.interface.print("Error: unknown flag: {s}\n\n", .{arg});
             try printUsage(&stderr.interface);
@@ -151,12 +186,17 @@ pub fn main() !void {
         }
     }
 
-    const loc = location.getLocation(allocator, 10000) catch |err| {
+    // Get location: either from mock or from platform APIs
+    const loc = if (mock_location) |ml| ml else location.getLocation(allocator, 10000) catch |err| {
         handleError(err, json_output, &stdout.interface, &stderr.interface);
         unreachable;
     };
 
-    const addr_result = location.reverseGeocode(allocator, loc.latitude, loc.longitude) catch null;
+    // Reverse geocoding: skip in mock mode
+    const addr_result = if (mock_location != null)
+        @as(?location.Address, null)
+    else
+        location.reverseGeocode(allocator, loc.latitude, loc.longitude) catch null;
     defer if (addr_result) |a| location.freeAddress(allocator, a);
 
     if (json_output) {
