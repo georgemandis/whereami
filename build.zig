@@ -17,6 +17,13 @@ pub fn build(b: *std.Build) void {
             location_mod.linkFramework("CoreLocation", .{});
             location_mod.linkFramework("Foundation", .{});
         },
+        .windows => {
+            location_mod.linkSystemLibrary("ole32", .{});
+            location_mod.linkSystemLibrary("oleaut32", .{});
+        },
+        .linux => {
+            location_mod.linkSystemLibrary("dbus-1", .{});
+        },
         else => {},
     }
 

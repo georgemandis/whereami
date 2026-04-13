@@ -4,7 +4,9 @@ const Allocator = std.mem.Allocator;
 
 const platform = switch (builtin.os.tag) {
     .macos => @import("platform/macos.zig"),
-    else => @compileError("Unsupported platform. Currently supported: macOS."),
+    .windows => @import("platform/windows.zig"),
+    .linux => @import("platform/linux.zig"),
+    else => @compileError("Unsupported platform. Currently supported: macOS, Windows, Linux."),
 };
 
 pub const Location = struct {
