@@ -24,6 +24,7 @@ pub fn build(b: *std.Build) void {
         },
         .linux => {
             location_mod.linkSystemLibrary("dbus-1", .{});
+            location_mod.linkSystemLibrary("c", .{});
         },
         else => {},
     }
@@ -40,6 +41,11 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.installArtifact(exe);
+
+    // On Linux, install the .desktop file so GeoClue2 allows location access
+    if (target_os == .linux) {
+        b.installFile("assets/whereami.desktop", "share/applications/whereami.desktop");
+    }
 
     const run_step = b.step("run", "Run whereami");
 

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=whereami
+Comment=Get your current location from the command line
+Exec=whereami
+Terminal=true
+Type=Application
+Categories=Utility;
+NoDisplay=true
