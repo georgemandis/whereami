@@ -18,8 +18,9 @@ pub fn build(b: *std.Build) void {
             location_mod.linkFramework("Foundation", .{});
         },
         .windows => {
-            location_mod.linkSystemLibrary("ole32", .{});
-            location_mod.linkSystemLibrary("oleaut32", .{});
+            // WinRT API sets (combase.dll) for RoInitialize, RoActivateInstance, etc.
+            location_mod.linkSystemLibrary("api-ms-win-core-winrt-l1-1-0", .{});
+            location_mod.linkSystemLibrary("api-ms-win-core-winrt-string-l1-1-0", .{});
         },
         .linux => {
             location_mod.linkSystemLibrary("dbus-1", .{});
