@@ -37,19 +37,19 @@ Two to three sentences covering:
 - Prints latitude, longitude, and accuracy; optionally reverse-geocodes to a human-readable address on platforms that support it.
 - Supports human-readable and JSON output.
 
-Followed by a minimal example block showing both invocations:
+Followed by a minimal example block showing both invocations. The implementer MUST run `zig build run` (or the mocked equivalent, e.g. `zig build run -- --mock=40.7128,-74.0060`) during the write pass and paste the real output into the README. Do not hand-write the JSON — `accuracy` is an `f64` formatted with `{d}`, so the literal output shape depends on the runtime and could differ from what a human would guess. Shape is roughly:
 
 ```
 $ whereami
-Location: 40.7128, -74.0060
-Accuracy: 35m
-Address: 123 Main St, New York, NY, 10001, United States
+Location: <lat>, <lon>
+Accuracy: <n>m
+Address: <street>, <city>, <state>, <postal>, <country>
 
 $ whereami --json
-{"latitude":40.7128,"longitude":-74.006,"accuracy":35,"address":{"street":"123 Main St","city":"New York","state":"NY","postal_code":"10001","country":"United States"}}
+{"latitude":<lat>,"longitude":<lon>,"accuracy":<n>,"address":{...}}
 ```
 
-Sample output should match the actual format produced by `src/main.zig` (the `printHuman` and `printJson` functions). Address section should reflect that it only appears on macOS.
+The `Address:` line should reflect that it only appears on macOS.
 
 ### 3. Install
 
@@ -97,7 +97,7 @@ Then one short paragraph per platform explaining what the backend actually is an
 
 - **Windows:** `whereami` uses the WinRT `Windows.Devices.Geolocation.Geolocator` class, activated through the WinRT runtime (via `api-ms-win-core-winrt-l1-1-0`). The Windows implementation has an IP-based fallback built in — if no GPS or Wi-Fi positioning is available, it still returns a coarse location. (An earlier iteration of this project used the legacy `ILocation` COM API, but that one is sensor-only and fails on desktops and VMs without GPS hardware.)
 
-- **Linux:** GeoClue2 is a D-Bus broker — it doesn't source location itself. It delegates to whichever location provider your desktop environment supplies, typically Mozilla Location Service via NetworkManager on GNOME. `whereami` talks to GeoClue2 over libdbus-1. On a minimal or headless system with no GeoClue2 provider installed, location will be unavailable — this is working as intended under the native-first rule. The `.desktop` file installed alongside the binary is what makes GeoClue2 recognize the application and grant it access.
+- **Linux:** GeoClue2 is a D-Bus broker — it doesn't source location itself. It delegates to whichever location provider your distro ships (historically Mozilla Location Service, though that was sunset in 2024; current providers vary by distro). `whereami` talks to GeoClue2 over libdbus-1. On a minimal or headless system with no provider configured, location will be unavailable — this is working as intended under the native-first rule. The `.desktop` file installed alongside the binary is what makes GeoClue2 recognize the application and grant it access.
 
 ### 6. Platform support and known limitations
 
