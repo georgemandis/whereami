@@ -72,12 +72,22 @@ git commit -m "docs: add README title, tagline, and intro"
 **Files:**
 - Modify: `README.md`
 
-- [ ] **Step 1: Append the Install section**
+- [ ] **Step 1: Determine the correct repo URL**
+
+Run:
+
+```bash
+git remote -v
+```
+
+Note the `origin` URL and convert it into the browser form (e.g., `git@github.com:user/repo.git` → `https://github.com/user/repo`). The Releases URL is that base + `/releases`.
+
+- [ ] **Step 2: Append the Install section**
 
 Structure:
 
 - Heading: `## Install`
-- Subsection `### Pre-built binaries` — one line: "Download the latest release from [GitHub Releases](https://github.com/georgemandis/whereami/releases)." (If the repo URL differs, use the actual one — check `git remote -v`.)
+- Subsection `### Pre-built binaries` — one line: "Download the latest release from [GitHub Releases](<URL from Step 1>)."
 - Subsection `### Package managers` — HTML-comment placeholders, verbatim:
 
 ```markdown
@@ -88,16 +98,6 @@ Structure:
 ```
 
 - Subsection `### Build from source` — one sentence pointing to the "Building from source" section lower in the README.
-
-- [ ] **Step 2: Confirm the repo URL is real**
-
-Run:
-
-```bash
-git remote -v
-```
-
-If the remote URL's owner/name doesn't match what you wrote in the Releases link, fix it now.
 
 - [ ] **Step 3: Commit**
 
