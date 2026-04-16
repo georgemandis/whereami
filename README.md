@@ -35,3 +35,16 @@ Download the latest release from [GitHub Releases](https://github.com/georgemand
 ### Build from source
 
 See [Building from source](#building-from-source) below for instructions on compiling `whereami` yourself with the Zig toolchain.
+
+## Usage
+
+- `--json` — output as JSON instead of human-readable text.
+- `--mock=LAT,LON` — use provided coordinates instead of location services. Useful for testing and scripting. Reverse geocoding is skipped in mock mode.
+- `--help`, `-h` — show this help message.
+
+```bash
+whereami
+whereami --json
+whereami --mock=40.7128,-74.0060
+whereami --help
+```
