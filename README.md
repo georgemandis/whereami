@@ -71,3 +71,21 @@ whereami --help
 - **Windows:** lat/lon and accuracy only. Reverse geocoding is technically possible via `Windows.Services.Maps.MapLocationFinder.FindLocationsAtAsync`, but that API requires a per-application Bing Maps API key (`MapService.ServiceToken`) that each installation would need to register. That requirement breaks the zero-config install story, so reverse geocoding is not implemented on Windows today. The door is open if Microsoft ever relaxes the API key requirement.
 - **Linux:** lat/lon and accuracy only. Reverse geocoding has no system-level equivalent on Linux — every available option requires a third-party HTTP service (Nominatim and similar), which would violate the native-first philosophy. Not planned.
 - **VM / headless environments:** Linux in a minimal or headless VM often has no GeoClue2 provider and will return "location unavailable." macOS VMs typically do not expose CoreLocation at all. `--mock=LAT,LON` is provided for these environments.
+
+## Building from source
+
+Zig 0.15.2 required.
+
+```bash
+zig build
+```
+
+`zig build` produces `zig-out/bin/whereami`.
+
+- **macOS:** `zig build bundle` produces `zig-out/whereami.app`, an ad-hoc-signed `.app` bundle. Required because CoreLocation only grants permission to signed bundled apps, not raw binaries. `zig build run` automatically uses the bundled binary.
+- **Linux:** requires `libdbus-1-dev` (or your distro's equivalent) at build time. The `assets/whereami.desktop` file is installed to `share/applications/` so GeoClue2 can identify the application.
+- **Windows:** no extra build-time steps. WinRT is available on Windows 8 and later.
+
+```bash
+zig build bundle
+```
