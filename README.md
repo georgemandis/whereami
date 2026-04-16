@@ -18,3 +18,20 @@ $ whereami --mock=40.7128,-74.0060 --json
 ```
 
 On macOS, real (non-`--mock`) runs also include an `Address:` line with the reverse-geocoded street, city, state, postal code, and country.
+
+## Install
+
+### Pre-built binaries
+
+Download the latest release from [GitHub Releases](https://github.com/georgemandis/whereami/releases).
+
+### Package managers
+
+<!-- Homebrew (macOS/Linux): filled in once the tap exists -->
+<!-- Scoop (Windows): filled in once the bucket exists -->
+<!-- Chocolatey (Windows): filled in once the package is approved -->
+<!-- .deb (Debian/Ubuntu): attached to each GitHub Release -->
+
+### Build from source
+
+See [Building from source](#building-from-source) below for instructions on compiling `whereami` yourself with the Zig toolchain.
