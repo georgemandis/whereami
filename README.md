@@ -89,3 +89,11 @@ zig build
 ```bash
 zig build bundle
 ```
+
+## Why
+
+Built as a [Recurse Center](https://www.recurse.com/) project to explore native OS APIs in Zig. I wanted to see what it actually looks like to call CoreLocation from Zig, then do the same thing through COM/WinRT on Windows, then again through D-Bus on Linux — three totally different native idioms for the same concept. A blog post walking through the implementation is coming soon: <!-- link to post once published -->.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
