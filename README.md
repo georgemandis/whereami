@@ -25,9 +25,14 @@ On macOS, real (non-`--mock`) runs also include an `Address:` line with the reve
 
 Download the latest release from [GitHub Releases](https://github.com/georgemandis/whereami/releases).
 
-### Package managers
+### Homebrew (macOS / Linux)
 
-<!-- Homebrew (macOS/Linux): filled in once the tap exists -->
+```bash
+brew install georgemandis/tap/whereami
+```
+
+### Package managers (coming soon)
+
 <!-- Scoop (Windows): filled in once the bucket exists -->
 <!-- Chocolatey (Windows): filled in once the package is approved -->
 <!-- .deb (Debian/Ubuntu): attached to each GitHub Release -->
