@@ -66,5 +66,27 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+
       - name: Build
-        run: echo "placeholder"
+        run: |
+          rm -rf zig-out
+          zig build -Dtarget=${{ matrix.target }}
+
+      - name: Package archive
+        run: |
+          VERSION="${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.sha) }}"
+          ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.archive_suffix }}"
+          mkdir -p "${ARCHIVE_DIR}"
+          cp "zig-out/bin/${{ matrix.artifact_name }}" "${ARCHIVE_DIR}/"
+          if [ "${{ matrix.archive_ext }}" = "zip" ]; then
+            zip -r "${ARCHIVE_DIR}.zip" "${ARCHIVE_DIR}"
+            echo "ARCHIVE=${ARCHIVE_DIR}.zip" >> "$GITHUB_ENV"
+          else
+            tar czf "${ARCHIVE_DIR}.tar.gz" "${ARCHIVE_DIR}"
+            echo "ARCHIVE=${ARCHIVE_DIR}.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whereami-${{ matrix.archive_suffix }}
+          path: ${{ env.ARCHIVE }}
