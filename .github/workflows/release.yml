@@ -1,0 +1,52 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-macos
+            archive_suffix: macos-aarch64
+          - target: x86_64-macos
+            archive_suffix: macos-x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - name: Build
+        run: echo "placeholder"
+
+  build-linux-windows:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-linux
+            archive_suffix: linux-x86_64
+            artifact_name: whereami
+            archive_ext: tar.gz
+          - target: aarch64-linux
+            archive_suffix: linux-aarch64
+            artifact_name: whereami
+            archive_ext: tar.gz
+          - target: x86_64-windows
+            archive_suffix: windows-x86_64
+            artifact_name: whereami.exe
+            archive_ext: zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - name: Build
+        run: echo "placeholder"
