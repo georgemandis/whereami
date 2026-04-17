@@ -14,10 +14,12 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: aarch64-macos
+          - target: ''
             archive_suffix: macos-aarch64
+            build_flags: ''
           - target: x86_64-macos
             archive_suffix: macos-x86_64
+            build_flags: '-Dmacos-sdk=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk'
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
@@ -27,7 +29,11 @@ jobs:
       - name: Build macOS bundle
         run: |
           rm -rf zig-out
-          zig build bundle -Dtarget=${{ matrix.target }}
+          if [ -n "${{ matrix.target }}" ]; then
+            zig build bundle -Dtarget=${{ matrix.target }} ${{ matrix.build_flags }}
+          else
+            zig build bundle
+          fi
 
       - name: Package archive
         run: |
@@ -44,23 +50,45 @@ jobs:
           name: whereami-${{ matrix.archive_suffix }}
           path: ${{ env.ARCHIVE }}
 
-  build-linux-windows:
-    runs-on: ubuntu-latest
+  build-linux:
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
-          - target: x86_64-linux
+          - runner: ubuntu-latest
             archive_suffix: linux-x86_64
-            artifact_name: whereami
-            archive_ext: tar.gz
-          - target: aarch64-linux
+          - runner: ubuntu-24.04-arm
             archive_suffix: linux-aarch64
-            artifact_name: whereami
-            archive_ext: tar.gz
-          - target: x86_64-windows
-            archive_suffix: windows-x86_64
-            artifact_name: whereami.exe
-            archive_ext: zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Install dbus development headers
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev
+
+      - name: Build
+        run: |
+          rm -rf zig-out
+          zig build
+
+      - name: Package archive
+        run: |
+          VERSION="${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.sha) }}"
+          ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.archive_suffix }}"
+          mkdir -p "${ARCHIVE_DIR}"
+          cp zig-out/bin/whereami "${ARCHIVE_DIR}/"
+          tar czf "${ARCHIVE_DIR}.tar.gz" "${ARCHIVE_DIR}"
+          echo "ARCHIVE=${ARCHIVE_DIR}.tar.gz" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whereami-${{ matrix.archive_suffix }}
+          path: ${{ env.ARCHIVE }}
+
+  build-windows:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
@@ -70,30 +98,25 @@ jobs:
       - name: Build
         run: |
           rm -rf zig-out
-          zig build -Dtarget=${{ matrix.target }}
+          zig build -Dtarget=x86_64-windows
 
       - name: Package archive
         run: |
           VERSION="${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.sha) }}"
-          ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.archive_suffix }}"
+          ARCHIVE_DIR="whereami-${VERSION}-windows-x86_64"
           mkdir -p "${ARCHIVE_DIR}"
-          cp "zig-out/bin/${{ matrix.artifact_name }}" "${ARCHIVE_DIR}/"
-          if [ "${{ matrix.archive_ext }}" = "zip" ]; then
-            zip -r "${ARCHIVE_DIR}.zip" "${ARCHIVE_DIR}"
-            echo "ARCHIVE=${ARCHIVE_DIR}.zip" >> "$GITHUB_ENV"
-          else
-            tar czf "${ARCHIVE_DIR}.tar.gz" "${ARCHIVE_DIR}"
-            echo "ARCHIVE=${ARCHIVE_DIR}.tar.gz" >> "$GITHUB_ENV"
-          fi
+          cp zig-out/bin/whereami.exe "${ARCHIVE_DIR}/"
+          zip -r "${ARCHIVE_DIR}.zip" "${ARCHIVE_DIR}"
+          echo "ARCHIVE=${ARCHIVE_DIR}.zip" >> "$GITHUB_ENV"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: whereami-${{ matrix.archive_suffix }}
+          name: whereami-windows-x86_64
           path: ${{ env.ARCHIVE }}
 
   release:
     if: github.ref_type == 'tag'
-    needs: [build-macos, build-linux-windows]
+    needs: [build-macos, build-linux, build-windows]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
