@@ -10,9 +10,15 @@
 
 ## Approach
 
-Add a "Package .deb" step to the existing `build-linux` job. The step creates a `.deb` directory structure and runs `dpkg-deb --build`. The resulting `.deb` is uploaded as an additional artifact alongside the existing `.tar.gz`.
+Add a "Package .deb" step to the existing `build-linux` job. The step creates a `.deb` directory structure and runs `dpkg-deb --root-owner-group --build`. The resulting `.deb` is uploaded as an additional artifact alongside the existing `.tar.gz`.
 
 No PPA, no apt repository, no signing. Users download the `.deb` from GitHub Releases and install with `sudo dpkg -i`.
+
+**Important implementation details:**
+- The version string must strip the `v` prefix from the git tag (e.g., `v0.1.0` → `0.1.0`). Debian policy requires versions to start with a digit.
+- The binary must be installed with mode `0755` and the `.desktop` file with mode `0644`. Use `install -m` to ensure correct permissions regardless of `umask`.
+- Skip `.deb` creation entirely for non-tag pushes (the `dev-<sha>` format is not a valid Debian version string).
+- Use `--root-owner-group` with `dpkg-deb` to ensure files are owned by `root:root` in the package.
 
 ---
 
@@ -29,7 +35,7 @@ No PPA, no apt repository, no signing. Users download the `.deb` from GitHub Rel
 
 ```
 Package: whereami
-Version: <version from tag, e.g. 0.1.0>
+Version: <version from tag with v prefix stripped, e.g. 0.1.0>
 Architecture: <amd64 or arm64>
 Maintainer: George Mandis <george@mand.is>
 Description: Get your current location from the command line using native OS APIs
@@ -71,11 +77,11 @@ include:
 
 ### New step: "Package .deb"
 
-Added after the existing "Package archive" step. Creates the directory structure, writes `DEBIAN/control`, copies the binary and `.desktop` file, runs `dpkg-deb --build`.
+Added after the existing "Package archive" step, but **only runs on tag pushes** (since non-tag version strings are not valid for Debian packages). Creates the directory structure, writes `DEBIAN/control` (with trailing newline), installs the binary (`0755`) and `.desktop` file (`0644`), runs `dpkg-deb --root-owner-group --build`.
 
 ### Artifact upload
 
-The existing `upload-artifact` step uploads the `.tar.gz`. A second `upload-artifact` step uploads the `.deb`. Both are uploaded as separate artifacts so the release job can collect them all.
+The existing `upload-artifact` step uploads the `.tar.gz` with artifact name `whereami-${{ matrix.archive_suffix }}`. A second `upload-artifact` step (also tag-only) uploads the `.deb` with a distinct artifact name: `whereami-deb-${{ matrix.deb_arch }}`. The release job's `download-artifact` with `merge-multiple: true` collects all artifacts.
 
 ---
 
@@ -87,7 +93,7 @@ Examples:
 - `whereami_0.1.0_amd64.deb`
 - `whereami_0.1.0_arm64.deb`
 
-When the build is from a non-tag push, version uses the `dev-<sha>` format to match the existing `.tar.gz` naming.
+`.deb` files are only produced for tag pushes (releases). Non-tag pushes skip `.deb` creation since `dev-<sha>` is not a valid Debian version string.
 
 ---
 
