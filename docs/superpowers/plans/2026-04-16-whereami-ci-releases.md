@@ -60,7 +60,11 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        target: [aarch64-macos, x86_64-macos]
+        include:
+          - target: aarch64-macos
+            archive_suffix: macos-aarch64
+          - target: x86_64-macos
+            archive_suffix: macos-x86_64
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
@@ -75,12 +79,15 @@ jobs:
       matrix:
         include:
           - target: x86_64-linux
+            archive_suffix: linux-x86_64
             artifact_name: whereami
             archive_ext: tar.gz
           - target: aarch64-linux
+            archive_suffix: linux-aarch64
             artifact_name: whereami
             archive_ext: tar.gz
           - target: x86_64-windows
+            archive_suffix: windows-x86_64
             artifact_name: whereami.exe
             archive_ext: zip
     steps:
@@ -131,7 +138,7 @@ The macOS job needs to, for each matrix target:
 3. Determine the version string: if triggered by a tag, extract it from `${{ github.ref_name }}` (e.g., `v0.1.0`). If triggered by a push to main, use `dev-${{ github.sha }}` (short form) or just `dev`.
 4. Create the archive directory and populate it:
    ```bash
-   ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.target }}"
+   ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.archive_suffix }}"
    mkdir -p "$ARCHIVE_DIR"
    cp -R zig-out/whereami.app "$ARCHIVE_DIR/"
    ln -s whereami.app/Contents/MacOS/whereami "$ARCHIVE_DIR/whereami"
@@ -162,7 +169,7 @@ The full steps section for the macOS job should look like:
       - name: Package archive
         run: |
           VERSION="${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.sha) }}"
-          ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.target }}"
+          ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.archive_suffix }}"
           mkdir -p "${ARCHIVE_DIR}"
           cp -R zig-out/whereami.app "${ARCHIVE_DIR}/"
           ln -s whereami.app/Contents/MacOS/whereami "${ARCHIVE_DIR}/whereami"
@@ -171,7 +178,7 @@ The full steps section for the macOS job should look like:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: whereami-${{ matrix.target }}
+          name: whereami-${{ matrix.archive_suffix }}
           path: ${{ env.ARCHIVE }}
 ```
 
@@ -204,14 +211,14 @@ The Linux/Windows job uses a matrix with `include` to differentiate behavior per
 3. Create archive:
    - For `.tar.gz` (Linux targets):
      ```bash
-     ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.target }}"
+     ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.archive_suffix }}"
      mkdir -p "${ARCHIVE_DIR}"
      cp "zig-out/bin/${{ matrix.artifact_name }}" "${ARCHIVE_DIR}/"
      tar czf "${ARCHIVE_DIR}.tar.gz" "${ARCHIVE_DIR}"
      ```
    - For `.zip` (Windows target):
      ```bash
-     ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.target }}"
+     ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.archive_suffix }}"
      mkdir -p "${ARCHIVE_DIR}"
      cp "zig-out/bin/${{ matrix.artifact_name }}" "${ARCHIVE_DIR}/"
      zip -r "${ARCHIVE_DIR}.zip" "${ARCHIVE_DIR}"
@@ -235,7 +242,7 @@ A clean way to handle both archive types in one step:
       - name: Package archive
         run: |
           VERSION="${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.sha) }}"
-          ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.target }}"
+          ARCHIVE_DIR="whereami-${VERSION}-${{ matrix.archive_suffix }}"
           mkdir -p "${ARCHIVE_DIR}"
           cp "zig-out/bin/${{ matrix.artifact_name }}" "${ARCHIVE_DIR}/"
           if [ "${{ matrix.archive_ext }}" = "zip" ]; then
@@ -248,7 +255,7 @@ A clean way to handle both archive types in one step:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: whereami-${{ matrix.target }}
+          name: whereami-${{ matrix.archive_suffix }}
           path: ${{ env.ARCHIVE }}
 ```
 
@@ -333,11 +340,11 @@ Check:
 - Two trigger events: `push` to `main` and `push` of `v*` tags.
 - `permissions: contents: write` is present.
 - Three jobs: `build-macos`, `build-linux-windows`, `release`.
-- macOS job matrix covers `aarch64-macos` and `x86_64-macos`.
-- Linux/Windows job matrix covers `x86_64-linux`, `aarch64-linux`, `x86_64-windows`.
+- macOS job matrix covers `aarch64-macos` and `x86_64-macos` targets with `macos-aarch64` and `macos-x86_64` archive suffixes.
+- Linux/Windows job matrix covers `x86_64-linux`, `aarch64-linux`, `x86_64-windows` targets with `linux-x86_64`, `linux-aarch64`, `windows-x86_64` archive suffixes.
 - macOS job uses `zig build bundle -Dtarget=...`.
 - Linux/Windows job uses `zig build -Dtarget=...` (NOT `bundle`).
-- Archive naming uses version from tag (or `dev-<sha>` on main push).
+- Archive naming uses `os-arch` format (e.g., `macos-aarch64`, NOT `aarch64-macos`) with version from tag (or `dev-<sha>` on main push).
 - macOS archives contain `.app` bundle + `whereami` symlink.
 - Linux archives contain `whereami` binary.
 - Windows archive is `.zip` containing `whereami.exe`.
