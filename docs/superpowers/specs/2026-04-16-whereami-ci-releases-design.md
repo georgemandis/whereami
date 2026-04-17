@@ -26,9 +26,10 @@ Targets:
 - `x86_64-macos` (Zig cross-compile)
 
 Build steps per target:
-1. `zig build bundle` — produces `zig-out/whereami.app` with ad-hoc signing (`codesign --force --sign -`).
-2. Create a `whereami` symlink pointing to `whereami.app/Contents/MacOS/whereami`.
-3. Package into a `.tar.gz` archive containing the `.app` bundle directory and the `whereami` symlink.
+1. Clean `zig-out/` before each target build (both targets output to the same directory, so the second would overwrite the first if not archived in between).
+2. `zig build bundle` — produces `zig-out/whereami.app` with ad-hoc signing (`codesign --force --sign -`).
+3. Create a `whereami` symlink pointing to `whereami.app/Contents/MacOS/whereami`.
+4. Package into a `.tar.gz` archive containing the `.app` bundle directory and the `whereami` symlink.
 
 ### Linux runner (`ubuntu-latest`)
 
