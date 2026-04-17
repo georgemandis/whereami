@@ -31,9 +31,15 @@ Download the latest release from [GitHub Releases](https://github.com/georgemand
 brew install georgemandis/tap/whereami
 ```
 
+### Scoop (Windows)
+
+```powershell
+scoop bucket add georgemandis https://github.com/georgemandis/scoop-bucket
+scoop install georgemandis/whereami
+```
+
 ### Package managers (coming soon)
 
-<!-- Scoop (Windows): filled in once the bucket exists -->
 <!-- Chocolatey (Windows): filled in once the package is approved -->
 <!-- .deb (Debian/Ubuntu): attached to each GitHub Release -->
 
