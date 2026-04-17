@@ -2,7 +2,7 @@
 
 **Status:** Approved design — ready for implementation plan.
 
-**Goal:** Create a Scoop bucket repo (`georgemandis/scoop-bucket`) with a manifest for `whereami` so Windows users can install via `scoop install bucket/whereami`.
+**Goal:** Create a Scoop bucket repo (`georgemandis/scoop-bucket`) with a manifest for `whereami` so Windows users can install via `scoop install georgemandis/whereami`.
 
 **Scope:** This is sub-project 3 of the distribution pipeline. It consumes the Windows x86_64 `.zip` from GitHub Releases (sub-project 1, complete). Homebrew tap (sub-project 2) is also complete. Chocolatey and .deb are separate sub-projects.
 
@@ -15,8 +15,8 @@ New **public** GitHub repo: `georgemandis/scoop-bucket`.
 Users install with:
 
 ```powershell
-scoop bucket add bucket https://github.com/georgemandis/scoop-bucket
-scoop install bucket/whereami
+scoop bucket add georgemandis https://github.com/georgemandis/scoop-bucket
+scoop install georgemandis/whereami
 ```
 
 ---
@@ -39,6 +39,7 @@ Scoop manifest at repo root. Structure:
             "hash": "2373f16975b1cbca306d2778f0d44fd354e268957e931c16a81da6ef59d15bd5"
         }
     },
+    "extract_dir": "whereami-v0.1.0-windows-x86_64",
     "bin": "whereami.exe",
     "checkver": "github",
     "autoupdate": {
@@ -46,14 +47,16 @@ Scoop manifest at repo root. Structure:
             "64bit": {
                 "url": "https://github.com/georgemandis/whereami/releases/download/v$version/whereami-v$version-windows-x86_64.zip"
             }
-        }
+        },
+        "extract_dir": "whereami-v$version-windows-x86_64"
     }
 }
 ```
 
 Key details:
 - **`architecture.64bit` only** — we only build Windows x86_64 today.
-- **`bin`** points to `whereami.exe`. Scoop auto-strips the zip's single top-level directory (`whereami-v0.1.0-windows-x86_64/`), so the `.exe` is directly accessible.
+- **`extract_dir`** explicitly strips the zip's top-level directory (`whereami-v0.1.0-windows-x86_64/`) so `bin` can reference `whereami.exe` directly.
+- **`bin`** points to `whereami.exe` (available after `extract_dir` stripping).
 - **`checkver: "github"`** — lets Scoop detect new versions from GitHub releases (informational; does not auto-update hashes).
 - **`autoupdate`** — defines the URL pattern so `scoop checkup` can report when an update is available, but the hash still needs manual updating.
 
@@ -68,8 +71,8 @@ Scoop bucket for tools by George Mandis.
 
 ## Install
 
-scoop bucket add bucket https://github.com/georgemandis/scoop-bucket
-scoop install bucket/whereami
+scoop bucket add georgemandis https://github.com/georgemandis/scoop-bucket
+scoop install georgemandis/whereami
 ```
 
 ---
