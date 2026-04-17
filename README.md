@@ -21,14 +21,17 @@ On macOS, real (non-`--mock`) runs also include an `Address:` line with the reve
 
 ## Install
 
-### Pre-built binaries
-
-Download the latest release from [GitHub Releases](https://github.com/georgemandis/whereami/releases).
-
 ### Homebrew (macOS / Linux)
 
 ```bash
 brew install georgemandis/tap/whereami
+```
+
+Or tap first, then install:
+
+```bash
+brew tap georgemandis/tap
+brew install whereami
 ```
 
 ### Scoop (Windows)
@@ -38,10 +41,9 @@ scoop bucket add georgemandis https://github.com/georgemandis/scoop-bucket
 scoop install georgemandis/whereami
 ```
 
-### Package managers (coming soon)
+### Pre-built binaries
 
-<!-- Chocolatey (Windows): filled in once the package is approved -->
-<!-- .deb (Debian/Ubuntu): attached to each GitHub Release -->
+Download the latest release from [GitHub Releases](https://github.com/georgemandis/whereami/releases). Archives are available for macOS (aarch64, x86_64), Linux (aarch64, x86_64), and Windows (x86_64).
 
 ### Build from source
 
