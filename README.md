@@ -105,7 +105,9 @@ zig build bundle
 
 ## Why
 
-Built as a [Recurse Center](https://www.recurse.com/) project to explore native OS APIs in Zig. I wanted to see what it actually looks like to call CoreLocation from Zig, then do the same thing through COM/WinRT on Windows, then again through D-Bus on Linux — three totally different native idioms for the same concept. A blog post walking through the implementation is coming soon: <!-- link to post once published -->.
+Built during my time at [Recurse Center](https://www.recurse.com/) as project to explore native OS APIs in Zig. I wanted to see what it actually looks like to call CoreLocation from Zig on macOS, then do the same thing through COM/WinRT on Windows, then again through D-Bus on Linux. Three totally different native idioms for the same concept with enough coverage to be a little bit interesting.
+
+I plan on writing a blog post walking through the implementation soon!
 
 ## License
 
