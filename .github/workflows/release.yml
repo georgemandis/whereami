@@ -61,8 +61,10 @@ jobs:
         include:
           - runner: ubuntu-latest
             archive_suffix: linux-x86_64
+            deb_arch: amd64
           - runner: ubuntu-24.04-arm
             archive_suffix: linux-aarch64
+            deb_arch: arm64
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
@@ -90,6 +92,38 @@ jobs:
         with:
           name: whereami-${{ matrix.archive_suffix }}
           path: ${{ env.ARCHIVE }}
+
+      - name: Package .deb
+        if: github.ref_type == 'tag'
+        run: |
+          DEB_VERSION="${{ github.ref_name }}"
+          DEB_VERSION="${DEB_VERSION#v}"
+          DEB_NAME="whereami_${DEB_VERSION}_${{ matrix.deb_arch }}"
+          mkdir -p "${DEB_NAME}/DEBIAN"
+          mkdir -p "${DEB_NAME}/usr/bin"
+          mkdir -p "${DEB_NAME}/usr/share/applications"
+          cat > "${DEB_NAME}/DEBIAN/control" <<EOF
+          Package: whereami
+          Version: ${DEB_VERSION}
+          Architecture: ${{ matrix.deb_arch }}
+          Maintainer: George Mandis <george@mand.is>
+          Description: Get your current location from the command line using native OS APIs
+          Homepage: https://github.com/georgemandis/whereami
+          Depends: libdbus-1-3
+          Section: utils
+          Priority: optional
+          EOF
+          install -m 755 zig-out/bin/whereami "${DEB_NAME}/usr/bin/whereami"
+          install -m 644 assets/whereami.desktop "${DEB_NAME}/usr/share/applications/whereami.desktop"
+          dpkg-deb --root-owner-group --build "${DEB_NAME}"
+          echo "DEB=${DEB_NAME}.deb" >> "$GITHUB_ENV"
+
+      - name: Upload .deb artifact
+        if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: whereami-deb-${{ matrix.deb_arch }}
+          path: ${{ env.DEB }}
 
   build-windows:
     runs-on: ubuntu-latest
