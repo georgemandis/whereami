@@ -1,5 +1,7 @@
 # whereami
 
+[![Build](https://github.com/georgemandis/whereami/actions/workflows/release.yml/badge.svg)](https://github.com/georgemandis/whereami/actions/workflows/release.yml)
+
 A CLI tool written in Zig that taps into system-level location services to tell you where you are — natively, on macOS, Windows, and Linux.
 
 ## What it does
