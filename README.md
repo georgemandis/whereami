@@ -41,6 +41,14 @@ scoop bucket add georgemandis https://github.com/georgemandis/scoop-bucket
 scoop install georgemandis/whereami
 ```
 
+### Debian / Ubuntu
+
+```bash
+# Download the .deb for your architecture (amd64 or arm64)
+curl -LO https://github.com/georgemandis/whereami/releases/download/v0.2.0/whereami_0.2.0_amd64.deb
+sudo dpkg -i whereami_0.2.0_amd64.deb
+```
+
 ### Pre-built binaries
 
 Download the latest release from [GitHub Releases](https://github.com/georgemandis/whereami/releases). Archives are available for macOS (aarch64, x86_64), Linux (aarch64, x86_64), and Windows (x86_64).
