@@ -12,6 +12,9 @@ fn printUsage(writer: *std.io.Writer) !void {
         \\  --mock=LAT,LON       Use provided coordinates instead of location services
         \\  --help, -h           Show this help message
         \\
+        \\Created by George Mandis <george@mand.is>
+        \\https://github.com/georgemandis/whereami
+        \\
     , .{});
 }
 
