@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const location = @import("location");
 
-const version = "0.3.1";
+const version = "0.3.2";
 
 fn printUsage(writer: *std.Io.Writer) !void {
     try writer.print(
