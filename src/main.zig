@@ -1,6 +1,8 @@
 const std = @import("std");
 const location = @import("location");
 
+const version = "0.3.0";
+
 fn printUsage(writer: *std.Io.Writer) !void {
     try writer.print(
         \\Usage: whereami [options]
@@ -10,6 +12,7 @@ fn printUsage(writer: *std.Io.Writer) !void {
         \\Options:
         \\  --json               Output as JSON
         \\  --mock=LAT,LON       Use provided coordinates instead of location services
+        \\  --version, -v        Show version
         \\  --help, -h           Show this help message
         \\
         \\Created by George Mandis <george@mand.is>
@@ -164,6 +167,10 @@ pub fn main(init: std.process.Init) !void {
     while (args_iter.next()) |arg| {
         if (std.mem.eql(u8, arg, "--json")) {
             json_output = true;
+        } else if (std.mem.eql(u8, arg, "--version") or std.mem.eql(u8, arg, "-v")) {
+            try stdout.interface.print("whereami " ++ version ++ "\n\nCreated by George Mandis <george@mand.is>\nhttps://github.com/georgemandis/whereami\n", .{});
+            try stdout.interface.flush();
+            return;
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
             try printUsage(&stdout.interface);
             try stdout.interface.flush();
