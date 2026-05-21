@@ -47,8 +47,8 @@ scoop install georgemandis/whereami
 
 ```bash
 # Download the .deb for your architecture (amd64 or arm64)
-curl -LO https://github.com/georgemandis/whereami/releases/download/v0.2.0/whereami_0.2.0_amd64.deb
-sudo dpkg -i whereami_0.2.0_amd64.deb
+curl -LO https://github.com/georgemandis/whereami/releases/download/v0.3.1/whereami_0.3.1_amd64.deb
+sudo dpkg -i whereami_0.3.1_amd64.deb
 ```
 
 ### Pre-built binaries
@@ -63,6 +63,7 @@ See [Building from source](#building-from-source) below for instructions on comp
 
 - `--json` — output as JSON instead of human-readable text.
 - `--mock=LAT,LON` — use provided coordinates instead of location services. Useful for testing and scripting. Reverse geocoding is skipped in mock mode.
+- `--version`, `-v` — show version and author info.
 - `--help`, `-h` — show this help message.
 
 ```bash
