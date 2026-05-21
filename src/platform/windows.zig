@@ -293,6 +293,10 @@ const GEOLOCATOR_CLASS = [_]u16{
     'o', 'l', 'o', 'c', 'a', 't', 'o', 'r',
 };
 
+// kernel32 helpers for polling
+extern "kernel32" fn Sleep(dwMilliseconds: u32) callconv(.c) void;
+extern "kernel32" fn GetTickCount64() callconv(.c) u64;
+
 /// Poll an IAsyncInfo until it completes or times out.
 fn waitForAsync(async_obj: *anyopaque, timeout_ms: u32) !AsyncStatus {
     const info = queryInterface(async_obj, &IID_IAsyncInfo) orelse
@@ -300,18 +304,16 @@ fn waitForAsync(async_obj: *anyopaque, timeout_ms: u32) !AsyncStatus {
     defer release(info);
 
     const info_vt = vtable(IAsyncInfoVtbl, info);
-    const timeout_ns: i128 = @as(i128, timeout_ms) * std.time.ns_per_ms;
-    const start: i128 = std.time.nanoTimestamp();
+    const start = GetTickCount64();
 
     while (true) {
         var status: AsyncStatus = .Started;
         _ = info_vt.get_Status(info, &status);
         if (status != .Started) return status;
 
-        const now: i128 = std.time.nanoTimestamp();
-        if (now - start >= timeout_ns) return LocationError.Timeout;
+        if (GetTickCount64() - start >= timeout_ms) return LocationError.Timeout;
 
-        std.Thread.sleep(50 * std.time.ns_per_ms);
+        Sleep(50);
     }
 }
 

@@ -1,7 +1,7 @@
 const std = @import("std");
 const location = @import("location");
 
-fn printUsage(writer: *std.io.Writer) !void {
+fn printUsage(writer: *std.Io.Writer) !void {
     try writer.print(
         \\Usage: whereami [options]
         \\
@@ -18,7 +18,7 @@ fn printUsage(writer: *std.io.Writer) !void {
     , .{});
 }
 
-fn writeJsonString(writer: *std.io.Writer, s: []const u8) !void {
+fn writeJsonString(writer: *std.Io.Writer, s: []const u8) !void {
     for (s) |c| {
         switch (c) {
             '"' => try writer.print("\\\"", .{}),
@@ -33,7 +33,7 @@ fn writeJsonString(writer: *std.io.Writer, s: []const u8) !void {
 }
 
 fn printHuman(
-    writer: *std.io.Writer,
+    writer: *std.Io.Writer,
     loc: location.Location,
     addr: ?location.Address,
 ) !void {
@@ -56,7 +56,7 @@ fn printHuman(
 }
 
 fn printJson(
-    writer: *std.io.Writer,
+    writer: *std.Io.Writer,
     loc: location.Location,
     addr: ?location.Address,
 ) !void {
@@ -88,8 +88,8 @@ fn printJson(
 fn handleError(
     err: anyerror,
     json_mode: bool,
-    stdout_writer: *std.io.Writer,
-    stderr_writer: *std.io.Writer,
+    stdout_writer: *std.Io.Writer,
+    stderr_writer: *std.Io.Writer,
 ) void {
     if (json_mode) {
         const error_key: []const u8 = switch (err) {
@@ -144,26 +144,24 @@ fn parseMockFlag(arg: []const u8) !?location.Location {
     };
 }
 
-pub fn main() !void {
-    const stdout_file = std.fs.File.stdout();
+pub fn main(init: std.process.Init) !void {
+    const stdout_file = std.Io.File.stdout();
     var stdout_buf: [4096]u8 = undefined;
-    var stdout = stdout_file.writer(&stdout_buf);
+    var stdout = stdout_file.writerStreaming(init.io, &stdout_buf);
 
-    const stderr_file = std.fs.File.stderr();
+    const stderr_file = std.Io.File.stderr();
     var stderr_buf: [4096]u8 = undefined;
-    var stderr = stderr_file.writer(&stderr_buf);
+    var stderr = stderr_file.writerStreaming(init.io, &stderr_buf);
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const allocator = init.gpa;
 
     var json_output = false;
     var mock_location: ?location.Location = null;
 
-    for (args[1..]) |arg| {
+    var args_iter = try init.minimal.args.iterateAllocator(allocator);
+    defer args_iter.deinit();
+    _ = args_iter.next(); // skip program name
+    while (args_iter.next()) |arg| {
         if (std.mem.eql(u8, arg, "--json")) {
             json_output = true;
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {

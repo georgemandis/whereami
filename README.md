@@ -97,7 +97,7 @@ whereami --help
 
 ## Building from source
 
-Zig 0.15.2 required.
+Zig 0.16.0 required.
 
 ```bash
 zig build
