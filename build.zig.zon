@@ -1,6 +1,7 @@
 .{
     .name = .whereami,
     .version = "0.0.1",
+    .fingerprint = 0x1150214049e6cdc,
     .minimum_zig_version = "0.16.0",
     .paths = .{""},
 }

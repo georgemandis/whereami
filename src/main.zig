@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const location = @import("location");
 
-const version = "0.3.2";
+const version = "0.3.3";
 
 fn printUsage(writer: *std.Io.Writer) !void {
     try writer.print(
@@ -19,6 +19,7 @@ fn printUsage(writer: *std.Io.Writer) !void {
         \\  --mock=LAT,LON       Use provided coordinates instead of location services
         \\  --version, -v        Show version
         \\  --help, -h           Show this help message
+        \\  completions <shell>  Generate shell completions (bash, zsh, fish)
         \\
         \\Created by George Mandis <george@mand.is>
         \\https://github.com/georgemandis/whereami
@@ -129,6 +130,93 @@ fn handleError(
     std.process.exit(1);
 }
 
+fn printCompletions(
+    shell: []const u8,
+    stdout_writer: *std.Io.Writer,
+    stderr_writer: *std.Io.Writer,
+) !void {
+    if (std.mem.eql(u8, shell, "bash")) {
+        try stdout_writer.print(
+            \\# whereami completions for bash
+            \\# Install: eval "$(whereami completions bash)"
+            \\# Persist: whereami completions bash > /etc/bash_completion.d/whereami
+            \\
+            \\_whereami() {{
+            \\    local cur prev words cword
+            \\    _init_completion || return
+            \\
+            \\    COMPREPLY=($(compgen -W "--json --mock --version -v --help -h completions" -- "$cur"))
+            \\
+            \\    case "$prev" in
+            \\        completions)
+            \\            COMPREPLY=($(compgen -W "bash zsh fish" -- "$cur"))
+            \\            ;;
+            \\    esac
+            \\}}
+            \\
+            \\complete -F _whereami whereami
+            \\
+        , .{});
+    } else if (std.mem.eql(u8, shell, "zsh")) {
+        try stdout_writer.print(
+            \\#compdef whereami
+            \\# whereami completions for zsh
+            \\# Install: whereami completions zsh | source /dev/stdin
+            \\# Persist: whereami completions zsh > ~/.zfunc/_whereami && fpath+=(~/.zfunc)
+            \\
+            \\_whereami() {{
+            \\    _arguments \
+            \\        '--json[Output as JSON]' \
+            \\        '--mock[Use provided coordinates]:LAT,LON:' \
+            \\        '(--version -v)'{{--version,-v}}'[Show version]' \
+            \\        '(--help -h)'{{--help,-h}}'[Show help]' \
+            \\        '1:command:(completions)' \
+            \\        '*::arg:->args'
+            \\
+            \\    case "$state" in
+            \\        args)
+            \\            case "$words[1]" in
+            \\                completions)
+            \\                    _arguments '1:shell:(bash zsh fish)'
+            \\                    ;;
+            \\            esac
+            \\            ;;
+            \\    esac
+            \\}}
+            \\
+            \\_whereami "$@"
+            \\
+        , .{});
+    } else if (std.mem.eql(u8, shell, "fish")) {
+        try stdout_writer.print(
+            \\# whereami completions for fish
+            \\# Install: whereami completions fish | source
+            \\# Persist: whereami completions fish > ~/.config/fish/completions/whereami.fish
+            \\
+            \\complete -e -c whereami
+            \\complete -c whereami -f
+            \\
+            \\# flags (always available)
+            \\complete -c whereami -l json -d "Output as JSON"
+            \\complete -c whereami -l mock -r -d "Use provided coordinates (LAT,LON)"
+            \\complete -c whereami -l version -s v -d "Show version"
+            \\complete -c whereami -l help -s h -d "Show help"
+            \\
+            \\# completions pseudo-command
+            \\complete -c whereami -n "__fish_use_subcommand" -a "completions" -d "Generate shell completions"
+            \\complete -c whereami -n "__fish_seen_subcommand_from completions" -a "bash zsh fish" -d "Shell type"
+            \\
+        , .{});
+    } else {
+        try stderr_writer.print("Error: unsupported shell '{s}'. Use bash, zsh, or fish\n", .{shell});
+        try stderr_writer.flush();
+        std.process.exit(2);
+        unreachable;
+    }
+
+    try stdout_writer.flush();
+}
+
 /// Parse "--mock=LAT,LON" and return a Location, or null if not a mock flag.
 /// Returns error for malformed mock values.
 fn parseMockFlag(arg: []const u8) !?location.Location {
@@ -179,6 +267,15 @@ pub fn main(init: std.process.Init) !void {
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
             try printUsage(&stdout.interface);
             try stdout.interface.flush();
+            return;
+        } else if (std.mem.eql(u8, arg, "completions")) {
+            const shell = args_iter.next() orelse {
+                try stderr.interface.print("Error: 'completions' requires a shell: bash, zsh, or fish\n", .{});
+                try stderr.interface.flush();
+                std.process.exit(2);
+                unreachable;
+            };
+            try printCompletions(shell, &stdout.interface, &stderr.interface);
             return;
         } else if (std.mem.startsWith(u8, arg, "--mock")) {
             if (std.mem.eql(u8, arg, "--mock")) {
