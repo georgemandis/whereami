@@ -62,8 +62,8 @@ scoop install georgemandis/whereami
 
 ```bash
 # Download the .deb for your architecture (amd64 or arm64)
-curl -LO https://github.com/georgemandis/whereami/releases/download/v0.3.1/whereami_0.3.1_amd64.deb
-sudo dpkg -i whereami_0.3.1_amd64.deb
+curl -LO https://github.com/georgemandis/whereami/releases/download/v0.4.0/whereami_0.4.0_amd64.deb
+sudo dpkg -i whereami_0.4.0_amd64.deb
 ```
 
 ### Pre-built binaries
