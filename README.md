@@ -6,7 +6,9 @@ A CLI tool written in Zig that taps into system-level location services to tell 
 
 ## What it does
 
-`whereami` calls your operating system's native location APIs directly — no HTTP requests, no API keys, no third-party services. It returns your latitude, longitude, and accuracy, and on platforms that support reverse geocoding (macOS today) it also resolves those coordinates to a human-readable address.
+`whereami` calls your operating system's native location APIs directly — no HTTP requests, no API keys, no third-party services. It returns your latitude, longitude, and accuracy, and on platforms that support geocoding (macOS today) it also resolves those coordinates to a human-readable address.
+
+On macOS it works in both directions for places other than where you are, too: give it coordinates and get an address, or give it an address and get coordinates.
 
 Output is human-readable by default, with a `--json` flag for scripting and piping into other tools.
 
@@ -20,6 +22,19 @@ $ whereami --mock=40.7128,-74.0060 --json
 ```
 
 On macOS, real (non-`--mock`) runs also include an `Address:` line with the reverse-geocoded street, city, state, postal code, and country.
+
+```
+$ whereami --at=40.6892,-73.9857
+Location: 40.6892, -73.9857
+Address: 45 Hoyt St, New York, NY, 11201, US
+
+$ whereami "1600 Pennsylvania Ave NW, Washington, DC"
+Location: 38.8977, -77.0366
+Address: 1600 Pennsylvania Ave NW, Washington, DC, 20500, US
+
+$ whereami "1600 Pennsylvania Ave NW, Washington, DC" --json
+{"latitude":38.8976635,"longitude":-77.036574,"accuracy":0,"address":{"street":"1600 Pennsylvania Ave NW","city":"Washington","state":"DC","postal_code":"20500","country":"US"}}
+```
 
 ## Install
 
@@ -62,28 +77,42 @@ See [Building from source](#building-from-source) below for instructions on comp
 ## Usage
 
 - `--json` — output as JSON instead of human-readable text.
-- `--mock=LAT,LON` — use provided coordinates instead of location services. Useful for testing and scripting. Reverse geocoding is skipped in mock mode.
+- `--at=LAT,LON` — look up the address at the given coordinates (macOS). On other platforms it prints the coordinates back with no address.
+- `[address]` — any non-flag arguments are treated as an address to look up the coordinates of (macOS). Quoting is optional; the words are joined with spaces. Can't be combined with `--at` or `--mock`.
+- `--mock=LAT,LON` — use provided coordinates instead of location services. Useful for testing and scripting. Reverse geocoding is skipped in mock mode, so it never touches the network.
 - `--version`, `-v` — show version and author info.
 - `--help`, `-h` — show this help message.
 
 ```bash
 whereami
 whereami --json
+whereami --at=40.6892,-73.9857
+whereami "350 5th Ave, New York"
 whereami --mock=40.7128,-74.0060
 whereami --help
 ```
+
+The JSON shape is the same in every mode, so an address lookup pipes into anything that already reads `whereami --json` — for example [nearme](https://github.com/georgemandis/nearme):
+
+```bash
+whereami "350 5th Ave, New York" --json | nearme coffee
+```
+
+`accuracy` is `0` for `--at` and address lookups, since nothing was measured. If an address can't be found, `whereami` exits with status 1 (and prints `{"error":"address_not_found"}` with `--json`). If `--at` coordinates have no address (open ocean, say), `address` is `null` and a warning goes to stderr.
 
 ## How it works
 
 `whereami` is a thin wrapper over whatever location API your OS already provides. No HTTP calls, no API keys, no third-party geocoding services. If your system can tell you where you are, `whereami` will ask it. If it can't, `whereami` will tell you that.
 
-| Platform | Backend                                | IP fallback | Reverse geocoding |
-| -------- | -------------------------------------- | ----------- | ----------------- |
-| macOS    | CoreLocation (Objective-C runtime)     | Yes         | Yes (CLGeocoder)  |
-| Windows  | WinRT Geolocation API (COM/WinRT)      | Yes         | No                |
-| Linux    | GeoClue2 over D-Bus                    | No          | No                |
+| Platform | Backend                                | IP fallback | Geocoding (address ⇄ coordinates) |
+| -------- | -------------------------------------- | ----------- | --------------------------------- |
+| macOS    | CoreLocation (Objective-C runtime)     | Yes         | Yes, both directions (CLGeocoder) |
+| Windows  | WinRT Geolocation API (COM/WinRT)      | Yes         | No                                |
+| Linux    | GeoClue2 over D-Bus                    | No          | No                                |
 
-**macOS:** CoreLocation is Apple's system location framework. `whereami` links against CoreLocation and Foundation, and calls into them via the Objective-C runtime (libobjc). CoreLocation has a built-in IP-based fallback when GPS/Wi-Fi positioning isn't available. Reverse geocoding uses `CLGeocoder`, which hits Apple's servers but is a first-class system API — no keys required.
+**macOS:** CoreLocation is Apple's system location framework. `whereami` links against CoreLocation and Foundation, and calls into them via the Objective-C runtime (libobjc). CoreLocation has a built-in IP-based fallback when GPS/Wi-Fi positioning isn't available. Geocoding in both directions uses `CLGeocoder`, which hits Apple's servers but is a first-class system API — no keys required. Address and `--at` lookups don't need location permission, since they never ask where you are.
+
+Apple deprecated `CLGeocoder` in macOS 26 in favor of MapKit's `MKGeocodingRequest` and `MKReverseGeocodingRequest`. `whereami` stays on `CLGeocoder` for now because it still works, it supports older macOS versions, and the MapKit replacements only return formatted address strings — they have no non-deprecated way to get the street, state, and postal code as separate fields.
 
 **Windows:** uses the WinRT `Windows.Devices.Geolocation.Geolocator` class, activated through the WinRT runtime. Has an IP-based fallback built in — if no GPS or Wi-Fi positioning is available, it still returns a coarse location. (An earlier iteration of this project used the legacy `ILocation` COM API, but that one is sensor-only and fails on desktops and VMs without GPS hardware.)
 
@@ -91,9 +120,9 @@ whereami --help
 
 ## Platform support and known limitations
 
-- **macOS:** fully featured — lat/lon, accuracy, reverse geocoding, IP fallback.
-- **Windows:** lat/lon and accuracy only. Reverse geocoding is technically possible via `Windows.Services.Maps.MapLocationFinder.FindLocationsAtAsync`, but that API requires a per-application Bing Maps API key (`MapService.ServiceToken`) that each installation would need to register. That requirement breaks the zero-config install story, so reverse geocoding is not implemented on Windows today. The door is open if Microsoft ever relaxes the API key requirement.
-- **Linux:** lat/lon and accuracy only. Reverse geocoding has no system-level equivalent on Linux — every available option requires a third-party HTTP service (Nominatim and similar), which would violate the native-first philosophy. Not planned.
+- **macOS:** fully featured — lat/lon, accuracy, reverse geocoding, address lookup, IP fallback.
+- **Windows:** lat/lon and accuracy only; address lookups exit with an error. Reverse geocoding is technically possible via `Windows.Services.Maps.MapLocationFinder.FindLocationsAtAsync`, but that API requires a per-application Bing Maps API key (`MapService.ServiceToken`) that each installation would need to register. That requirement breaks the zero-config install story, so reverse geocoding is not implemented on Windows today. The door is open if Microsoft ever relaxes the API key requirement.
+- **Linux:** lat/lon and accuracy only; address lookups exit with an error. Reverse geocoding has no system-level equivalent on Linux — every available option requires a third-party HTTP service (Nominatim and similar), which would violate the native-first philosophy. Not planned.
 - **VM / headless environments:** Linux in a minimal or headless VM often has no GeoClue2 provider and will return "location unavailable." macOS VMs typically do not expose CoreLocation at all. `--mock=LAT,LON` is provided for these environments.
 
 ## Building from source

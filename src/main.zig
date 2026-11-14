@@ -6,9 +6,10 @@ const version = "0.3.3";
 
 fn printUsage(writer: *std.Io.Writer) !void {
     try writer.print(
-        \\Usage: whereami [options]
+        \\Usage: whereami [options] [address]
         \\
-        \\Get your current location using native OS location services.
+        \\Get your current location using native OS location services,
+        \\or look up an address or a pair of coordinates.
         \\Version {s} ({s})
         \\
         \\Options:
@@ -16,10 +17,19 @@ fn printUsage(writer: *std.Io.Writer) !void {
     , .{ version, @tagName(builtin.os.tag) });
     try writer.print(
         \\  --json               Output as JSON
+        \\  --at=LAT,LON         Look up the address at these coordinates (macOS)
         \\  --mock=LAT,LON       Use provided coordinates instead of location services
         \\  --version, -v        Show version
         \\  --help, -h           Show this help message
         \\  completions <shell>  Generate shell completions (bash, zsh, fish)
+        \\
+        \\Arguments:
+        \\  [address]            Look up the coordinates of an address (macOS)
+        \\
+        \\Examples:
+        \\  whereami
+        \\  whereami --at=40.6892,-73.9857
+        \\  whereami "1600 Pennsylvania Ave NW, Washington, DC" --json
         \\
         \\Created by George Mandis <george@mand.is>
         \\https://github.com/georgemandis/whereami
@@ -45,9 +55,11 @@ fn printHuman(
     writer: *std.Io.Writer,
     loc: location.Location,
     addr: ?location.Address,
+    show_accuracy: bool,
 ) !void {
     try writer.print("Location: {d:.4}, {d:.4}\n", .{ loc.latitude, loc.longitude });
-    try writer.print("Accuracy: {d:.0}m\n", .{loc.accuracy});
+    // Accuracy describes a position fix; a looked-up place doesn't have one.
+    if (show_accuracy) try writer.print("Accuracy: {d:.0}m\n", .{loc.accuracy});
 
     if (addr) |a| {
         var first = true;
@@ -145,7 +157,7 @@ fn printCompletions(
             \\    local cur prev words cword
             \\    _init_completion || return
             \\
-            \\    COMPREPLY=($(compgen -W "--json --mock --version -v --help -h completions" -- "$cur"))
+            \\    COMPREPLY=($(compgen -W "--json --at --mock --version -v --help -h completions" -- "$cur"))
             \\
             \\    case "$prev" in
             \\        completions)
@@ -167,6 +179,7 @@ fn printCompletions(
             \\_whereami() {{
             \\    _arguments \
             \\        '--json[Output as JSON]' \
+            \\        '--at=[Look up the address at these coordinates]:LAT,LON:' \
             \\        '--mock[Use provided coordinates]:LAT,LON:' \
             \\        '(--version -v)'{{--version,-v}}'[Show version]' \
             \\        '(--help -h)'{{--help,-h}}'[Show help]' \
@@ -198,6 +211,7 @@ fn printCompletions(
             \\
             \\# flags (always available)
             \\complete -c whereami -l json -d "Output as JSON"
+            \\complete -c whereami -l at -r -d "Look up the address at coordinates (LAT,LON)"
             \\complete -c whereami -l mock -r -d "Use provided coordinates (LAT,LON)"
             \\complete -c whereami -l version -s v -d "Show version"
             \\complete -c whereami -l help -s h -d "Show help"
@@ -217,27 +231,38 @@ fn printCompletions(
     try stdout_writer.flush();
 }
 
-/// Parse "--mock=LAT,LON" and return a Location, or null if not a mock flag.
-/// Returns error for malformed mock values.
-fn parseMockFlag(arg: []const u8) !?location.Location {
-    const prefix = "--mock=";
-    if (!std.mem.startsWith(u8, arg, prefix)) return null;
+/// Parse the "LAT,LON" value of a "--flag=LAT,LON" argument into a Location.
+/// `prefix` is the flag including the "=", e.g. "--mock=".
+fn parseCoordFlag(arg: []const u8, comptime prefix: []const u8) !location.Location {
+    if (!std.mem.startsWith(u8, arg, prefix)) return error.InvalidCoordFormat;
 
     const value = arg[prefix.len..];
     const comma_pos = std.mem.indexOfScalar(u8, value, ',') orelse
-        return error.InvalidMockFormat;
+        return error.InvalidCoordFormat;
 
-    const lat_str = value[0..comma_pos];
-    const lon_str = value[comma_pos + 1 ..];
+    const lat_str = std.mem.trim(u8, value[0..comma_pos], " ");
+    const lon_str = std.mem.trim(u8, value[comma_pos + 1 ..], " ");
 
-    const lat = std.fmt.parseFloat(f64, lat_str) catch return error.InvalidMockFormat;
-    const lon = std.fmt.parseFloat(f64, lon_str) catch return error.InvalidMockFormat;
+    const lat = std.fmt.parseFloat(f64, lat_str) catch return error.InvalidCoordFormat;
+    const lon = std.fmt.parseFloat(f64, lon_str) catch return error.InvalidCoordFormat;
 
     return location.Location{
         .latitude = lat,
         .longitude = lon,
         .accuracy = 0,
     };
+}
+
+fn isValidCoordinate(loc: location.Location) bool {
+    return loc.latitude >= -90 and loc.latitude <= 90 and
+        loc.longitude >= -180 and loc.longitude <= 180;
+}
+
+/// Report a usage error and exit with status 2.
+fn usageError(stderr_writer: *std.Io.Writer, comptime fmt: []const u8, args: anytype) noreturn {
+    stderr_writer.print("Error: " ++ fmt ++ "\n", args) catch {};
+    stderr_writer.flush() catch {};
+    std.process.exit(2);
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -253,6 +278,13 @@ pub fn main(init: std.process.Init) !void {
 
     var json_output = false;
     var mock_location: ?location.Location = null;
+    var at_location: ?location.Location = null;
+
+    // Positional arguments are joined into one address, so quoting is optional:
+    // `whereami 350 5th Ave, New York` works the same as the quoted form.
+    var address_query: std.ArrayList(u8) = .empty;
+    var has_address = false;
+    defer address_query.deinit(allocator);
 
     var args_iter = try init.minimal.args.iterateAllocator(allocator);
     defer args_iter.deinit();
@@ -278,41 +310,94 @@ pub fn main(init: std.process.Init) !void {
             try printCompletions(shell, &stdout.interface, &stderr.interface);
             return;
         } else if (std.mem.startsWith(u8, arg, "--mock")) {
-            if (std.mem.eql(u8, arg, "--mock")) {
-                try stderr.interface.print("Error: --mock requires a value (e.g., --mock=40.7128,-74.0060)\n", .{});
-                try stderr.interface.flush();
-                std.process.exit(2);
-            }
-            mock_location = parseMockFlag(arg) catch {
-                try stderr.interface.print("Error: invalid --mock format, expected --mock=LAT,LON\n", .{});
-                try stderr.interface.flush();
-                std.process.exit(2);
-            };
-        } else {
+            mock_location = parseCoordFlag(arg, "--mock=") catch
+                usageError(&stderr.interface, "invalid --mock format, expected --mock=LAT,LON (e.g., --mock=40.7128,-74.0060)", .{});
+        } else if (std.mem.startsWith(u8, arg, "--at")) {
+            const at = parseCoordFlag(arg, "--at=") catch
+                usageError(&stderr.interface, "invalid --at format, expected --at=LAT,LON (e.g., --at=40.7128,-74.0060)", .{});
+            if (!isValidCoordinate(at))
+                usageError(&stderr.interface, "--at coordinates out of range (latitude -90..90, longitude -180..180)", .{});
+            at_location = at;
+        } else if (std.mem.startsWith(u8, arg, "-")) {
             try stderr.interface.print("Error: unknown flag: {s}\n\n", .{arg});
             try printUsage(&stderr.interface);
             try stderr.interface.flush();
             std.process.exit(2);
+        } else {
+            has_address = true;
+            if (address_query.items.len > 0) try address_query.append(allocator, ' ');
+            try address_query.appendSlice(allocator, arg);
         }
     }
 
-    // Get location: either from mock or from platform APIs
-    const loc = if (mock_location) |ml| ml else location.getLocation(allocator, 10000) catch |err| {
+    const address = std.mem.trim(u8, address_query.items, " \t\r\n");
+
+    if (has_address and address.len == 0)
+        usageError(&stderr.interface, "address is empty", .{});
+    if (has_address and (at_location != null or mock_location != null))
+        usageError(&stderr.interface, "an address can't be combined with --at or --mock", .{});
+    if (at_location != null and mock_location != null)
+        usageError(&stderr.interface, "--at and --mock can't be used together", .{});
+
+    // Address mode: forward geocode the address to coordinates.
+    if (has_address) {
+        const found = location.geocode(allocator, address) catch |err| switch (err) {
+            error.PlatformUnsupported => {
+                if (json_output) {
+                    try stdout.interface.print("{{\"error\":\"platform_unsupported\"}}\n", .{});
+                    try stdout.interface.flush();
+                }
+                try stderr.interface.print("Error: address lookup is not supported on this platform.\n", .{});
+                try stderr.interface.flush();
+                std.process.exit(1);
+            },
+            else => return err,
+        } orelse {
+            if (json_output) {
+                try stdout.interface.print("{{\"error\":\"address_not_found\"}}\n", .{});
+                try stdout.interface.flush();
+            }
+            try stderr.interface.print(
+                "Error: couldn't find a location for \"{s}\".\nCheck the address and your network connection.\n",
+                .{address},
+            );
+            try stderr.interface.flush();
+            std.process.exit(1);
+        };
+        defer location.freeAddress(allocator, found.address);
+
+        if (json_output) {
+            try printJson(&stdout.interface, found.location, found.address);
+        } else {
+            try printHuman(&stdout.interface, found.location, found.address, false);
+        }
+        try stdout.interface.flush();
+        return;
+    }
+
+    // Get location: from --at, from --mock, or from platform APIs
+    const loc = at_location orelse mock_location orelse location.getLocation(allocator, 10000) catch |err| {
         handleError(err, json_output, &stdout.interface, &stderr.interface);
         unreachable;
     };
 
-    // Reverse geocoding: skip in mock mode
+    // Reverse geocoding: skipped in mock mode, which stays fully offline
     const addr_result = if (mock_location != null)
         @as(?location.Address, null)
     else
         location.reverseGeocode(allocator, loc.latitude, loc.longitude) catch null;
     defer if (addr_result) |a| location.freeAddress(allocator, a);
 
+    // With --at the address is the whole point, so say so when there isn't one.
+    if (at_location != null and addr_result == null) {
+        try stderr.interface.print("Warning: no address found for these coordinates.\n", .{});
+        try stderr.interface.flush();
+    }
+
     if (json_output) {
         try printJson(&stdout.interface, loc, addr_result);
     } else {
-        try printHuman(&stdout.interface, loc, addr_result);
+        try printHuman(&stdout.interface, loc, addr_result, at_location == null);
     }
 
     try stdout.interface.flush();

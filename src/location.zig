@@ -23,6 +23,12 @@ pub const Address = struct {
     country: []const u8,
 };
 
+/// A forward-geocoded address: where it is, plus its normalized components.
+pub const GeocodeResult = struct {
+    location: Location,
+    address: Address,
+};
+
 pub const LocationError = error{
     PermissionDenied,
     LocationUnavailable,
@@ -41,6 +47,13 @@ pub fn getLocation(allocator: Allocator, timeout_ms: u32) !Location {
 
 pub fn reverseGeocode(allocator: Allocator, lat: f64, lon: f64) !?Address {
     return platform.reverseGeocode(allocator, lat, lon);
+}
+
+/// Resolve a free-form address string to coordinates. Returns null when
+/// nothing matches, or error.PlatformUnsupported where the OS has no geocoder.
+/// Free the returned address with freeAddress.
+pub fn geocode(allocator: Allocator, query: []const u8) (LocationError || Allocator.Error)!?GeocodeResult {
+    return platform.geocode(allocator, query);
 }
 
 pub fn freeAddress(allocator: Allocator, address: Address) void {

@@ -1,6 +1,7 @@
 const std = @import("std");
 const Location = @import("../location.zig").Location;
 const Address = @import("../location.zig").Address;
+const GeocodeResult = @import("../location.zig").GeocodeResult;
 const LocationError = @import("../location.zig").LocationError;
 
 // ---------------------------------------------------------------------------
@@ -323,6 +324,12 @@ pub fn reverseGeocode(allocator: std.mem.Allocator, lat: f64, lon: f64) !?Addres
     _ = lat;
     _ = lon;
     return null;
+}
+
+pub fn geocode(allocator: std.mem.Allocator, query: []const u8) !?GeocodeResult {
+    _ = allocator;
+    _ = query;
+    return LocationError.PlatformUnsupported;
 }
 
 pub fn freeAddress(allocator: std.mem.Allocator, address: Address) void {

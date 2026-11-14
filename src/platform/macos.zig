@@ -1,6 +1,8 @@
 const std = @import("std");
 const objc = @import("../objc.zig");
 const Location = @import("../location.zig").Location;
+const Address = @import("../location.zig").Address;
+const GeocodeResult = @import("../location.zig").GeocodeResult;
 const LocationError = @import("../location.zig").LocationError;
 
 // CLLocationCoordinate2D — two f64s, returned in registers on ARM64
@@ -49,7 +51,8 @@ var current_run_loop: ?*anyopaque = null;
 // ---------------------------------------------------------------------------
 // Module-level state for geocoder block callback
 // ---------------------------------------------------------------------------
-var geocode_result_address: ?@import("../location.zig").Address = null;
+var geocode_result_address: ?Address = null;
+var geocode_result_location: ?Location = null;
 var geocode_result_error: ?LocationError = null;
 var geocode_completed: bool = false;
 
@@ -237,14 +240,36 @@ fn geocoderBlockInvoke(block: *GeocoderBlockLiteral, placemarks: ?objc.id, err: 
 
     const placemark = objc.nsArrayObjectAtIndex(marks, 0);
 
-    const Address = @import("../location.zig").Address;
-    geocode_result_address = Address{
-        .street = extractPlacemarkField(placemark, "thoroughfare") catch &[_]u8{},
+    // The placemark's own coordinate — this is the answer for forward
+    // geocoding, and the snapped point for reverse geocoding.
+    const placemark_location: ?objc.id = objc.msgSend(?objc.id, placemark, objc.sel("location"), .{});
+    if (placemark_location) |cl_location| {
+        const coord = objc.msgSend(CLLocationCoordinate2D, cl_location, objc.sel("coordinate"), .{});
+        geocode_result_location = Location{
+            .latitude = coord.latitude,
+            .longitude = coord.longitude,
+            .accuracy = 0,
+        };
+    }
+
+    const address = Address{
+        .street = extractStreet(placemark) catch &[_]u8{},
         .city = extractPlacemarkField(placemark, "locality") catch &[_]u8{},
         .state = extractPlacemarkField(placemark, "administrativeArea") catch &[_]u8{},
         .postal_code = extractPlacemarkField(placemark, "postalCode") catch &[_]u8{},
         .country = extractPlacemarkField(placemark, "ISOcountryCode") catch &[_]u8{},
     };
+
+    // Open ocean and similar spots come back as a placemark with no address
+    // components at all. Report that as "no address" rather than an empty one.
+    // (Nothing to free: empty fields are never heap-allocated.)
+    const has_any_field = address.street.len + address.city.len + address.state.len +
+        address.postal_code.len + address.country.len > 0;
+    if (has_any_field) {
+        geocode_result_address = address;
+    } else {
+        geocode_result_error = LocationError.GeocodingFailed;
+    }
     geocode_completed = true;
     if (current_run_loop) |rl| CFRunLoopStop(rl);
 }
@@ -261,25 +286,40 @@ fn extractPlacemarkField(placemark: objc.id, property: [*:0]const u8) ![]const u
     return copy;
 }
 
-// ---------------------------------------------------------------------------
-// Reverse geocoding public API
-// ---------------------------------------------------------------------------
+/// Street line including the house number ("45 Hoyt St").
+/// Prefers CNPostalAddress.street, which orders number and street name the way
+/// the address's own country does ("Hauptstraße 5"). Falls back to joining
+/// subThoroughfare + thoroughfare if that isn't available.
+fn extractStreet(placemark: objc.id) ![]const u8 {
+    const postal: ?objc.id = objc.msgSend(?objc.id, placemark, objc.sel("postalAddress"), .{});
+    if (postal) |postal_address| {
+        const street = try extractPlacemarkField(postal_address, "street");
+        if (street.len > 0) return street;
+    }
 
-pub fn reverseGeocode(allocator: std.mem.Allocator, lat: f64, lon: f64) !?@import("../location.zig").Address {
-    _ = allocator; // Address fields use c_allocator (see block callback)
+    const number = try extractPlacemarkField(placemark, "subThoroughfare");
+    const name = try extractPlacemarkField(placemark, "thoroughfare");
+    if (number.len == 0) return name;
+    if (name.len == 0) return number;
+    defer std.heap.c_allocator.free(@constCast(number));
+    defer std.heap.c_allocator.free(@constCast(name));
 
-    // Reset state
+    return std.mem.concat(std.heap.c_allocator, u8, &.{ number, " ", name });
+}
+
+/// Send a CLGeocoder request whose signature is (argument, completionHandler)
+/// and pump the run loop until the handler fires or the timeout passes.
+/// Results land in the geocode_result_* module state.
+fn runGeocoder(selector: [*:0]const u8, argument: objc.id, timeout_seconds: f64) void {
     geocode_result_address = null;
+    geocode_result_location = null;
     geocode_result_error = null;
     geocode_completed = false;
 
-    // Create CLLocation from lat/lon
-    const CLLocation = objc.getClass("CLLocation") orelse return null;
-    const cl_loc_alloc = objc.msgSend(objc.id, CLLocation, objc.sel("alloc"), .{});
-    const cl_location = objc.msgSend(objc.id, cl_loc_alloc, objc.sel("initWithLatitude:longitude:"), .{ lat, lon });
-
-    // Create CLGeocoder
-    const CLGeocoder = objc.getClass("CLGeocoder") orelse return null;
+    const CLGeocoder = objc.getClass("CLGeocoder") orelse {
+        geocode_result_error = LocationError.GeocodingFailed;
+        return;
+    };
     const geocoder_alloc = objc.msgSend(objc.id, CLGeocoder, objc.sel("alloc"), .{});
     const geocoder = objc.msgSend(objc.id, geocoder_alloc, objc.sel("init"), .{});
 
@@ -292,19 +332,49 @@ pub fn reverseGeocode(allocator: std.mem.Allocator, lat: f64, lon: f64) !?@impor
         .descriptor = &geocoder_block_descriptor,
     };
 
-    // [geocoder reverseGeocodeLocation:completionHandler:]
     current_run_loop = CFRunLoopGetCurrent();
-    objc.msgSend(void, geocoder, objc.sel("reverseGeocodeLocation:completionHandler:"), .{ cl_location, @as(objc.id, @ptrCast(&block)) });
-
-    // Pump run loop (5 second timeout for geocoding)
-    _ = CFRunLoopRunInMode(kCFRunLoopDefaultMode, 5.0, false);
+    objc.msgSend(void, geocoder, objc.sel(selector), .{ argument, @as(objc.id, @ptrCast(&block)) });
+    _ = CFRunLoopRunInMode(kCFRunLoopDefaultMode, timeout_seconds, false);
     current_run_loop = null;
+}
+
+// ---------------------------------------------------------------------------
+// Geocoding public API
+// ---------------------------------------------------------------------------
+
+pub fn reverseGeocode(allocator: std.mem.Allocator, lat: f64, lon: f64) !?Address {
+    _ = allocator; // Address fields use c_allocator (see block callback)
+
+    // Create CLLocation from lat/lon
+    const CLLocation = objc.getClass("CLLocation") orelse return null;
+    const cl_loc_alloc = objc.msgSend(objc.id, CLLocation, objc.sel("alloc"), .{});
+    const cl_location = objc.msgSend(objc.id, cl_loc_alloc, objc.sel("initWithLatitude:longitude:"), .{ lat, lon });
+
+    // [geocoder reverseGeocodeLocation:completionHandler:]
+    runGeocoder("reverseGeocodeLocation:completionHandler:", cl_location, 5.0);
 
     if (geocode_result_error != null) return null;
     return geocode_result_address;
 }
 
-pub fn freeAddress(allocator: std.mem.Allocator, address: @import("../location.zig").Address) void {
+/// Forward geocoding: resolve a free-form address string to coordinates.
+/// Returns null if nothing matched (or the lookup failed or timed out).
+pub fn geocode(allocator: std.mem.Allocator, query: []const u8) !?GeocodeResult {
+    const query_z = try allocator.dupeZ(u8, query);
+    defer allocator.free(query_z);
+
+    // [geocoder geocodeAddressString:completionHandler:]
+    runGeocoder("geocodeAddressString:completionHandler:", objc.nsString(query_z), 10.0);
+
+    const address = geocode_result_address orelse return null;
+    const loc = geocode_result_location orelse {
+        freeAddress(allocator, address);
+        return null;
+    };
+    return GeocodeResult{ .location = loc, .address = address };
+}
+
+pub fn freeAddress(allocator: std.mem.Allocator, address: Address) void {
     _ = allocator; // Fields allocated with c_allocator in block callback
     const alloc = std.heap.c_allocator;
     if (address.street.len > 0) alloc.free(@constCast(address.street));
